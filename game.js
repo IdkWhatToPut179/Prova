@@ -406,20 +406,22 @@ function animate() {
 
   const delta = Math.min(clock.getDelta(), 0.05);
 
-  if (controls.isLocked) {
-    updateMovement(delta);
-    updateInteractTarget();
+ if (controls.isLocked) {
+  updateMovement(delta);
+  updateDoorAnimation(delta);
+  updateInteractTarget();
 
-    if (keys.e && !eConsumed) {
-      interactWithTarget(currentTarget);
-      eConsumed = true;
-    }
-    if (!keys.e) {
-      eConsumed = false;
-    }
-  } else {
-    hint.style.display = "none";
+  if (keys.e && !eConsumed) {
+    interactWithTarget(currentTarget);
+    eConsumed = true;
   }
+  if (!keys.e) {
+    eConsumed = false;
+  }
+} else {
+  hint.style.display = "none";
+}
+
 
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
