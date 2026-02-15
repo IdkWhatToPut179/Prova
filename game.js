@@ -22,6 +22,10 @@ const CONFIG = {
   door: {
     openAngle: -Math.PI / 2,
     animSpeed: 4.5
+  },
+  inventory: {
+    slots: 5,
+    maxStack: 99
   }
 };
 
@@ -52,6 +56,7 @@ scene.add(dirLight);
 // UI
 const overlay = document.getElementById("overlay");
 const hint = document.getElementById("hint");
+const inventoryEl = document.getElementById("inventory");
 
 // ======================================================
 // CONTROLLI
@@ -61,14 +66,8 @@ const player = controls.getObject();
 player.position.copy(CONFIG.player.spawn);
 scene.add(player);
 
-overlay.addEventListener("click", () => {
-  controls.lock();
-});
-
-controls.addEventListener("lock", () => {
-  overlay.classList.add("hidden");
-});
-
+overlay.addEventListener("click", () => controls.lock());
+controls.addEventListener("lock", () => overlay.classList.add("hidden"));
 controls.addEventListener("unlock", () => {
   overlay.classList.remove("hidden");
   hint.style.display = "none";
@@ -84,6 +83,7 @@ const keys = {
 
 window.addEventListener("keydown", (e) => {
   if (e.repeat) return;
+
   if (e.code === "KeyW") keys.w = true;
   if (e.code === "KeyA") keys.a = true;
   if (e.code === "KeyS") keys.s = true;
@@ -91,6 +91,13 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = true;
   if (e.code === "Space") keys.space = true;
   if (e.code === "KeyE") keys.e = true;
+
+  // Selezione slot 1..5
+  if (e.code === "Digit1") inventory.selectSlot(0);
+  if (e.code === "Digit2") inventory.selectSlot(1);
+  if (e.code === "Digit3") inventory.selectSlot(2);
+  if (e.code === "Digit4") inventory.selectSlot(3);
+  if (e.code === "Digit5") inventory.selectSlot(4);
 });
 
 window.addEventListener("keyup", (e) => {
@@ -102,6 +109,101 @@ window.addEventListener("keyup", (e) => {
   if (e.code === "Space") keys.space = false;
   if (e.code === "KeyE") keys.e = false;
 });
+
+// ======================================================
+// INVENTARIO
+// ======================================================
+class Inventory {
+  constructor(slotCount, maxStack, rootEl) {
+    this.slotCount = slotCount;
+    this.maxStack = maxStack;
+    this.rootEl = rootEl;
+    this.selectedSlot = 0;
+    this.slots = Array.from({ length: slotCount }, () => null);
+    this.render();
+  }
+
+  // item = { id, name, count }
+  addItem(itemId, itemName, count = 1) {
+    let remaining = count;
+
+    // 1) prova a stackare
+    for (let i = 0; i < this.slots.length; i++) {
+      const s = this.slots[i];
+      if (!s) continue;
+      if (s.id !== itemId) continue;
+      if (s.count >= this.maxStack) continue;
+
+      const space = this.maxStack - s.count;
+      const toAdd = Math.min(space, remaining);
+      s.count += toAdd;
+      remaining -= toAdd;
+      if (remaining <= 0) {
+        this.render();
+        return true;
+      }
+    }
+
+    // 2) usa slot vuoti
+    for (let i = 0; i < this.slots.length; i++) {
+      if (this.slots[i] !== null) continue;
+      const toAdd = Math.min(this.maxStack, remaining);
+      this.slots[i] = { id: itemId, name: itemName, count: toAdd };
+      remaining -= toAdd;
+      if (remaining <= 0) {
+        this.render();
+        return true;
+      }
+    }
+
+    // pieno
+    this.render();
+    return false;
+  }
+
+  selectSlot(index) {
+    if (index < 0 || index >= this.slotCount) return;
+    this.selectedSlot = index;
+    this.render();
+  }
+
+  getSelectedItem() {
+    return this.slots[this.selectedSlot];
+  }
+
+  render() {
+    this.rootEl.innerHTML = "";
+
+    for (let i = 0; i < this.slotCount; i++) {
+      const slot = this.slots[i];
+      const div = document.createElement("div");
+      div.className = "inv-slot" + (i === this.selectedSlot ? " active" : "");
+
+      const key = document.createElement("div");
+      key.className = "inv-key";
+      key.textContent = `${i + 1}`;
+
+      const name = document.createElement("div");
+      name.className = "inv-name";
+      name.textContent = slot ? slot.name : "Vuoto";
+
+      const count = document.createElement("div");
+      count.className = "inv-count";
+      count.textContent = slot ? `x${slot.count}` : "";
+
+      div.appendChild(key);
+      div.appendChild(name);
+      div.appendChild(count);
+      this.rootEl.appendChild(div);
+    }
+  }
+}
+
+const inventory = new Inventory(
+  CONFIG.inventory.slots,
+  CONFIG.inventory.maxStack,
+  inventoryEl
+);
 
 // ======================================================
 // COLLISIONI MONDO
@@ -140,18 +242,8 @@ for (let i = 0; i < 16; i++) {
 }
 
 // ======================================================
-// INTERFACE INTERACTABLE (contratto)
+// INTERACTABLE SYSTEM
 // ======================================================
-
-/**
- * Contratto Interactable (informale, stile JS):
- * - getRaycastObject(): THREE.Object3D
- * - getPrompt(): string
- * - interact(): void
- * - update(delta): void (opzionale, default no-op)
- *
- * Per mappare hit -> interactable usiamo WeakMap<Object3D, Interactable>
- */
 class BaseInteractable {
   constructor() {
     if (new.target === BaseInteractable) {
@@ -168,11 +260,9 @@ class BaseInteractable {
   }
 
   interact() {}
-
   update(_delta) {}
 }
 
-// Registro centralizzato
 const interactables = [];
 const interactableByObject = new WeakMap();
 
@@ -182,7 +272,7 @@ function registerInteractable(interactable) {
 }
 
 // ======================================================
-// INTERACTABLE: CHEST
+// CHEST INTERACTABLE
 // ======================================================
 class ChestInteractable extends BaseInteractable {
   constructor(mesh) {
@@ -207,7 +297,6 @@ class ChestInteractable extends BaseInteractable {
   }
 }
 
-// mesh cassa
 const chestMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1.2, 0.8, 0.8),
   new THREE.MeshStandardMaterial({ color: 0x8b4513 })
@@ -218,7 +307,7 @@ addStaticCollider(chestMesh);
 registerInteractable(new ChestInteractable(chestMesh));
 
 // ======================================================
-// INTERACTABLE: DOOR
+// DOOR INTERACTABLE
 // ======================================================
 class DoorInteractable extends BaseInteractable {
   constructor(doorMesh, pivot, colliderMesh, colliderBox) {
@@ -227,7 +316,6 @@ class DoorInteractable extends BaseInteractable {
     this.pivot = pivot;
     this.colliderMesh = colliderMesh;
     this.colliderBox = colliderBox;
-
     this.currentAngle = 0;
     this.targetAngle = 0;
   }
@@ -237,25 +325,21 @@ class DoorInteractable extends BaseInteractable {
   }
 
   getPrompt() {
-    const isOpenTarget = Math.abs(this.targetAngle - CONFIG.door.openAngle) < 0.01;
-    return isOpenTarget
+    const openTarget = Math.abs(this.targetAngle - CONFIG.door.openAngle) < 0.01;
+    return openTarget
       ? "Premi E per chiudere porta"
       : "Premi E per aprire porta";
   }
 
   interact() {
-    // toggle sul target, non sul current (più robusto durante animazione)
     const isClosedTarget = Math.abs(this.targetAngle) < 0.01;
     this.targetAngle = isClosedTarget ? CONFIG.door.openAngle : 0;
   }
 
   update(delta) {
-    // animazione fluida
     const t = 1 - Math.exp(-CONFIG.door.animSpeed * delta);
     this.currentAngle += (this.targetAngle - this.currentAngle) * t;
     this.pivot.rotation.y = this.currentAngle;
-
-    // collider SEMPRE aggiornato alla posa corrente del battente
     this.refreshCollider();
   }
 
@@ -271,7 +355,6 @@ class DoorInteractable extends BaseInteractable {
   }
 }
 
-// costruzione porta
 const doorPivot = new THREE.Object3D();
 doorPivot.position.set(-2, 0, -4);
 scene.add(doorPivot);
@@ -280,18 +363,15 @@ const doorMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.15),
   new THREE.MeshStandardMaterial({ color: 0x6b7280 })
 );
-// cardine laterale
 doorMesh.position.set(0.5, 1, 0);
 doorPivot.add(doorMesh);
 
-// collider invisibile della porta
 const doorColliderMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.25),
   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
 );
 scene.add(doorColliderMesh);
 
-// box dinamico porta (entra nel sistema collisioni)
 const doorColliderBox = new THREE.Box3();
 worldColliders.push(doorColliderBox);
 
@@ -302,8 +382,70 @@ const doorInteractable = new DoorInteractable(
   doorColliderBox
 );
 registerInteractable(doorInteractable);
-// sync iniziale collider
 doorInteractable.refreshCollider();
+
+// ======================================================
+// PICKUP INTERACTABLE (NUOVO)
+// ======================================================
+class PickupInteractable extends BaseInteractable {
+  constructor(mesh, itemId, itemName, amount = 1) {
+    super();
+    this.mesh = mesh;
+    this.itemId = itemId;
+    this.itemName = itemName;
+    this.amount = amount;
+    this.collected = false;
+  }
+
+  getRaycastObject() {
+    return this.mesh;
+  }
+
+  getPrompt() {
+    if (this.collected) return "";
+    return `Premi E per raccogliere ${this.itemName}`;
+  }
+
+  interact() {
+    if (this.collected) return;
+
+    const ok = inventory.addItem(this.itemId, this.itemName, this.amount);
+    if (!ok) {
+      // inventario pieno
+      hint.textContent = "Inventario pieno";
+      hint.style.display = "block";
+      return;
+    }
+
+    // raccolto: rimuovo mesh dalla scena e disabilito
+    this.collected = true;
+    this.mesh.visible = false;
+    this.mesh.parent?.remove(this.mesh);
+  }
+
+  update(delta) {
+    if (this.collected) return;
+    // piccola animazione pickup
+    this.mesh.rotation.y += 1.5 * delta;
+    this.mesh.position.y += Math.sin(performance.now() * 0.003) * 0.0008;
+  }
+}
+
+// crea alcuni pickup esempio
+function createPickup({ x, y, z, color, itemId, itemName, amount }) {
+  const mesh = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.25, 0),
+    new THREE.MeshStandardMaterial({ color })
+  );
+  mesh.position.set(x, y, z);
+  scene.add(mesh);
+
+  registerInteractable(new PickupInteractable(mesh, itemId, itemName, amount));
+}
+
+createPickup({ x: 0, y: 0.6, z: -2, color: 0xff4444, itemId: "apple", itemName: "Mela", amount: 1 });
+createPickup({ x: 1.5, y: 0.6, z: -1.2, color: 0x44ccff, itemId: "gem", itemName: "Gemma", amount: 1 });
+createPickup({ x: -1.2, y: 0.6, z: -2.8, color: 0xffcc33, itemId: "coin", itemName: "Moneta", amount: 5 });
 
 // ======================================================
 // FISICA PLAYER
@@ -365,7 +507,7 @@ function resolveVerticalCollisions(prevY, position) {
       headY = position.y;
     }
 
-    // testa
+    // soffitto
     if (
       velocity.y > 0 &&
       headY >= box.min.y &&
@@ -420,20 +562,21 @@ function updatePlayer(delta) {
 }
 
 // ======================================================
-// INTERAZIONE (RAYCAST + E)
+// INTERAZIONE
 // ======================================================
 const raycaster = new THREE.Raycaster();
 let currentInteractable = null;
 let eConsumed = false;
 
 function updateInteractionTarget() {
-  // aggiorna prima tutti gli interactable (es. porta animata/collider)
-  // Nota: update generale viene già chiamato nel loop principale, qui facciamo solo raycast.
+  const raycastObjects = [];
+
+  for (const it of interactables) {
+    const obj = it.getRaycastObject();
+    if (obj && obj.visible) raycastObjects.push(obj);
+  }
 
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-  // oggetti raycastabili dal registro
-  const raycastObjects = interactables.map((it) => it.getRaycastObject());
   const hits = raycaster.intersectObjects(raycastObjects, false);
 
   currentInteractable = null;
@@ -442,8 +585,14 @@ function updateInteractionTarget() {
   }
 
   if (controls.isLocked && currentInteractable) {
-    hint.textContent = currentInteractable.getPrompt();
-    hint.style.display = "block";
+    const p = currentInteractable.getPrompt();
+    if (p && p.length > 0) {
+      hint.textContent = p;
+      hint.style.display = "block";
+    } else {
+      hint.style.display = "none";
+      hint.textContent = "";
+    }
   } else {
     hint.style.display = "none";
     hint.textContent = "";
@@ -461,7 +610,7 @@ function animate() {
   if (controls.isLocked) {
     updatePlayer(delta);
 
-    // update di tutti gli interactable (porta animata qui)
+    // update interactables (porta + pickup animati)
     for (const it of interactables) {
       it.update(delta);
     }
