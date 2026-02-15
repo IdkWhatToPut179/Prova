@@ -56,15 +56,18 @@ const keys = {
   e: false
 };
 
-window.addEventListener("keyup", (e) => {
-  if (e.code === "KeyW") keys.w = false;
-  if (e.code === "KeyA") keys.a = false;
-  if (e.code === "KeyS") keys.s = false;
-  if (e.code === "KeyD") keys.d = false;
-  if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = false;
-  if (e.code === "Space") keys.space = false;
-  if (e.code === "KeyE") keys.e = false; // <-- FIX
+window.addEventListener("keydown", (e) => {
+  if (e.repeat) return;
+
+  if (e.code === "KeyW") keys.w = true;
+  if (e.code === "KeyA") keys.a = true;
+  if (e.code === "KeyS") keys.s = true;
+  if (e.code === "KeyD") keys.d = true;
+  if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = true;
+  if (e.code === "Space") keys.space = true;
+  if (e.code === "KeyE") keys.e = true;
 });
+
 
   // pressione singola E (non tenuta continua)
   if (e.code === "KeyE") keys.e = true;
