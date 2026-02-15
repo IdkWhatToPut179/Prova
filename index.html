@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FPS Base - WASD</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="overlay">
+    <h1>FPS base</h1>
+    <p>Clicca per iniziare</p>
+    <p>W A S D = muovi • Mouse = guarda • ESC = sblocca mouse</p>
+  </div>
+
+  <!-- Import map per usare three.js senza bundler -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
