@@ -43,7 +43,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
 
-// Luci
+// luci
 scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.8));
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(5, 10, 2);
@@ -61,7 +61,6 @@ const player = controls.getObject();
 player.position.copy(CONFIG.player.spawn);
 scene.add(player);
 
-// Importante: pointer lock solo su gesto utente
 overlay.addEventListener("click", () => {
   controls.lock();
 });
@@ -105,7 +104,7 @@ window.addEventListener("keyup", (e) => {
 });
 
 // ======================================================
-// MONDO + COLLISIONI
+// COLLISIONI MONDO
 // ======================================================
 const worldColliders = []; // array<Box3>
 
@@ -120,107 +119,191 @@ function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-// Terreno
+// terreno
 const ground = new THREE.Mesh(
   new THREE.BoxGeometry(40, 1, 40),
   new THREE.MeshStandardMaterial({ color: 0x2d7a2d })
 );
-ground.position.y = -0.5; // top = 0
+ground.position.y = -0.5;
 scene.add(ground);
 addStaticCollider(ground);
 
-// Cubi scenario
+// cubi ambiente
 for (let i = 0; i < 16; i++) {
-  const box = new THREE.Mesh(
+  const b = new THREE.Mesh(
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0x8888ff })
   );
-  box.position.set((Math.random() - 0.5) * 30, 0.5, (Math.random() - 0.5) * 30);
-  scene.add(box);
-  addStaticCollider(box);
+  b.position.set((Math.random() - 0.5) * 30, 0.5, (Math.random() - 0.5) * 30);
+  scene.add(b);
+  addStaticCollider(b);
 }
 
 // ======================================================
-// INTERAGIBILI
+// INTERFACE INTERACTABLE (contratto)
 // ======================================================
-const interactables = [];
 
-// Cassa
-const chest = new THREE.Mesh(
+/**
+ * Contratto Interactable (informale, stile JS):
+ * - getRaycastObject(): THREE.Object3D
+ * - getPrompt(): string
+ * - interact(): void
+ * - update(delta): void (opzionale, default no-op)
+ *
+ * Per mappare hit -> interactable usiamo WeakMap<Object3D, Interactable>
+ */
+class BaseInteractable {
+  constructor() {
+    if (new.target === BaseInteractable) {
+      throw new Error("BaseInteractable è astratta.");
+    }
+  }
+
+  getRaycastObject() {
+    throw new Error("getRaycastObject() non implementato");
+  }
+
+  getPrompt() {
+    return "Premi E per interagire";
+  }
+
+  interact() {}
+
+  update(_delta) {}
+}
+
+// Registro centralizzato
+const interactables = [];
+const interactableByObject = new WeakMap();
+
+function registerInteractable(interactable) {
+  interactables.push(interactable);
+  interactableByObject.set(interactable.getRaycastObject(), interactable);
+}
+
+// ======================================================
+// INTERACTABLE: CHEST
+// ======================================================
+class ChestInteractable extends BaseInteractable {
+  constructor(mesh) {
+    super();
+    this.mesh = mesh;
+    this.opened = false;
+  }
+
+  getRaycastObject() {
+    return this.mesh;
+  }
+
+  getPrompt() {
+    return this.opened
+      ? "Premi E per chiudere cassa"
+      : "Premi E per aprire cassa";
+  }
+
+  interact() {
+    this.opened = !this.opened;
+    this.mesh.material.color.set(this.opened ? 0xd4af37 : 0x8b4513);
+  }
+}
+
+// mesh cassa
+const chestMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1.2, 0.8, 0.8),
   new THREE.MeshStandardMaterial({ color: 0x8b4513 })
 );
-chest.position.set(2, 0.4, -3);
-chest.userData = {
-  type: "chest",
-  opened: false,
-  labelClosed: "Premi E per aprire cassa",
-  labelOpen: "Premi E per chiudere cassa",
-  get label() {
-    return this.opened ? this.labelOpen : this.labelClosed;
-  }
-};
-scene.add(chest);
-interactables.push(chest);
-addStaticCollider(chest);
+chestMesh.position.set(2, 0.4, -3);
+scene.add(chestMesh);
+addStaticCollider(chestMesh);
+registerInteractable(new ChestInteractable(chestMesh));
 
-// Porta con pivot
+// ======================================================
+// INTERACTABLE: DOOR
+// ======================================================
+class DoorInteractable extends BaseInteractable {
+  constructor(doorMesh, pivot, colliderMesh, colliderBox) {
+    super();
+    this.doorMesh = doorMesh;
+    this.pivot = pivot;
+    this.colliderMesh = colliderMesh;
+    this.colliderBox = colliderBox;
+
+    this.currentAngle = 0;
+    this.targetAngle = 0;
+  }
+
+  getRaycastObject() {
+    return this.doorMesh;
+  }
+
+  getPrompt() {
+    const isOpenTarget = Math.abs(this.targetAngle - CONFIG.door.openAngle) < 0.01;
+    return isOpenTarget
+      ? "Premi E per chiudere porta"
+      : "Premi E per aprire porta";
+  }
+
+  interact() {
+    // toggle sul target, non sul current (più robusto durante animazione)
+    const isClosedTarget = Math.abs(this.targetAngle) < 0.01;
+    this.targetAngle = isClosedTarget ? CONFIG.door.openAngle : 0;
+  }
+
+  update(delta) {
+    // animazione fluida
+    const t = 1 - Math.exp(-CONFIG.door.animSpeed * delta);
+    this.currentAngle += (this.targetAngle - this.currentAngle) * t;
+    this.pivot.rotation.y = this.currentAngle;
+
+    // collider SEMPRE aggiornato alla posa corrente del battente
+    this.refreshCollider();
+  }
+
+  refreshCollider() {
+    const pos = this.doorMesh.getWorldPosition(new THREE.Vector3());
+    const quat = this.doorMesh.getWorldQuaternion(new THREE.Quaternion());
+
+    this.colliderMesh.position.copy(pos);
+    this.colliderMesh.quaternion.copy(quat);
+    this.colliderMesh.updateMatrixWorld(true);
+
+    this.colliderBox.setFromObject(this.colliderMesh);
+  }
+}
+
+// costruzione porta
 const doorPivot = new THREE.Object3D();
 doorPivot.position.set(-2, 0, -4);
 scene.add(doorPivot);
 
-const door = new THREE.Mesh(
+const doorMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.15),
   new THREE.MeshStandardMaterial({ color: 0x6b7280 })
 );
-// cardine laterale sinistro del battente
-door.position.set(0.5, 1, 0);
-doorPivot.add(door);
+// cardine laterale
+doorMesh.position.set(0.5, 1, 0);
+doorPivot.add(doorMesh);
 
-door.userData = {
-  type: "door",
-  opened: false,
-  labelClosed: "Premi E per aprire porta",
-  labelOpen: "Premi E per chiudere porta",
-  get label() {
-    return this.opened ? this.labelOpen : this.labelClosed;
-  }
-};
-interactables.push(door);
-
-// Mesh collider porta (invisibile) che segue il battente
+// collider invisibile della porta
 const doorColliderMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.25),
   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
 );
 scene.add(doorColliderMesh);
 
-// Box collider porta dinamico
+// box dinamico porta (entra nel sistema collisioni)
 const doorColliderBox = new THREE.Box3();
 worldColliders.push(doorColliderBox);
 
-// Angoli porta
-let doorCurrentAngle = 0;
-let doorTargetAngle = 0;
-
-function refreshDoorCollider() {
-  // Posizione + rotazione mondiali del battente
-  const pos = door.getWorldPosition(new THREE.Vector3());
-  const quat = door.getWorldQuaternion(new THREE.Quaternion());
-
-  doorColliderMesh.position.copy(pos);
-  doorColliderMesh.quaternion.copy(quat);
-  doorColliderMesh.updateMatrixWorld(true);
-
-  doorColliderBox.setFromObject(doorColliderMesh);
-}
-
-// Stato iniziale porta
-doorPivot.rotation.y = 0;
-doorCurrentAngle = 0;
-doorTargetAngle = 0;
-door.userData.opened = false;
-refreshDoorCollider();
+const doorInteractable = new DoorInteractable(
+  doorMesh,
+  doorPivot,
+  doorColliderMesh,
+  doorColliderBox
+);
+registerInteractable(doorInteractable);
+// sync iniziale collider
+doorInteractable.refreshCollider();
 
 // ======================================================
 // FISICA PLAYER
@@ -230,16 +313,13 @@ const wishDir = new THREE.Vector3();
 let isGrounded = false;
 
 function resolveHorizontalCollisions(position) {
-  const playerMinY = position.y - CONFIG.player.height;
-  const playerMaxY = position.y;
+  const minY = position.y - CONFIG.player.height;
+  const maxY = position.y;
 
   for (const box of worldColliders) {
     if (box.isEmpty()) continue;
+    if (maxY <= box.min.y || minY >= box.max.y) continue;
 
-    // filtro verticale
-    if (playerMaxY <= box.min.y || playerMinY >= box.max.y) continue;
-
-    // nearest point nel piano XZ
     const closestX = clamp(position.x, box.min.x, box.max.x);
     const closestZ = clamp(position.z, box.min.z, box.max.z);
 
@@ -266,14 +346,13 @@ function resolveVerticalCollisions(prevY, position) {
   for (const box of worldColliders) {
     if (box.isEmpty()) continue;
 
-    // overlap XZ
     const closestX = clamp(position.x, box.min.x, box.max.x);
     const closestZ = clamp(position.z, box.min.z, box.max.z);
     const dx = position.x - closestX;
     const dz = position.z - closestZ;
     if (dx * dx + dz * dz > CONFIG.player.radius * CONFIG.player.radius) continue;
 
-    // Atterraggio su top box
+    // atterraggio
     if (
       velocity.y <= 0 &&
       footY <= box.max.y &&
@@ -286,7 +365,7 @@ function resolveVerticalCollisions(prevY, position) {
       headY = position.y;
     }
 
-    // Testa sotto soffitto
+    // testa
     if (
       velocity.y > 0 &&
       headY >= box.min.y &&
@@ -300,10 +379,9 @@ function resolveVerticalCollisions(prevY, position) {
   }
 }
 
-function updatePlayerMovement(delta) {
+function updatePlayer(delta) {
   const speed = keys.shift ? CONFIG.player.sprintSpeed : CONFIG.player.walkSpeed;
 
-  // Input direzionale locale
   wishDir.set(0, 0, 0);
   if (keys.w) wishDir.z -= 1;
   if (keys.s) wishDir.z += 1;
@@ -311,35 +389,30 @@ function updatePlayerMovement(delta) {
   if (keys.d) wishDir.x += 1;
   if (wishDir.lengthSq() > 0) wishDir.normalize();
 
-  // Accelerazione orizzontale
   const control = isGrounded ? 1.0 : CONFIG.player.airControl;
   const targetVX = wishDir.x * speed;
   const targetVZ = wishDir.z * speed;
-
   const blend = Math.min(1, CONFIG.player.accel * control * delta);
+
   velocity.x += (targetVX - velocity.x) * blend;
   velocity.z += (targetVZ - velocity.z) * blend;
 
-  // Salto
   if (keys.space && isGrounded) {
     velocity.y = CONFIG.player.jumpSpeed;
     isGrounded = false;
   }
 
-  // Gravità
   velocity.y -= CONFIG.player.gravity * delta;
 
-  // Movimento orizzontale rispetto alla camera
   const prevY = player.position.y;
+
   controls.moveRight(velocity.x * delta);
-  controls.moveForward(-velocity.z * delta); // W = avanti
+  controls.moveForward(-velocity.z * delta); // W avanti
   resolveHorizontalCollisions(player.position);
 
-  // Movimento verticale + collisioni verticali
   player.position.y += velocity.y * delta;
   resolveVerticalCollisions(prevY, player.position);
 
-  // Respawn safety
   if (player.position.y < -50) {
     player.position.copy(CONFIG.player.spawn);
     velocity.set(0, 0, 0);
@@ -347,58 +420,33 @@ function updatePlayerMovement(delta) {
 }
 
 // ======================================================
-// PORTA ANIMAZIONE + COLLIDER
-// ======================================================
-function updateDoor(delta) {
-  const t = 1 - Math.exp(-CONFIG.door.animSpeed * delta);
-  doorCurrentAngle += (doorTargetAngle - doorCurrentAngle) * t;
-  doorPivot.rotation.y = doorCurrentAngle;
-
-  // Aggiorna collider SEMPRE (anche porta aperta)
-  refreshDoorCollider();
-
-  // stato logico
-  door.userData.opened = Math.abs(doorCurrentAngle - CONFIG.door.openAngle) < 0.12;
-}
-
-// ======================================================
-// INTERAZIONE
+// INTERAZIONE (RAYCAST + E)
 // ======================================================
 const raycaster = new THREE.Raycaster();
-let currentTarget = null;
+let currentInteractable = null;
 let eConsumed = false;
 
 function updateInteractionTarget() {
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const hits = raycaster.intersectObjects(interactables, false);
+  // aggiorna prima tutti gli interactable (es. porta animata/collider)
+  // Nota: update generale viene già chiamato nel loop principale, qui facciamo solo raycast.
 
-  currentTarget = null;
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+  // oggetti raycastabili dal registro
+  const raycastObjects = interactables.map((it) => it.getRaycastObject());
+  const hits = raycaster.intersectObjects(raycastObjects, false);
+
+  currentInteractable = null;
   if (hits.length > 0 && hits[0].distance <= CONFIG.interaction.maxDistance) {
-    currentTarget = hits[0].object;
+    currentInteractable = interactableByObject.get(hits[0].object) ?? null;
   }
 
-  if (controls.isLocked && currentTarget) {
-    hint.textContent = currentTarget.userData.label ?? "Premi E per interagire";
+  if (controls.isLocked && currentInteractable) {
+    hint.textContent = currentInteractable.getPrompt();
     hint.style.display = "block";
   } else {
     hint.style.display = "none";
     hint.textContent = "";
-  }
-}
-
-function interactWith(target) {
-  if (!target || !target.userData) return;
-
-  if (target.userData.type === "chest") {
-    target.userData.opened = !target.userData.opened;
-    target.material.color.set(target.userData.opened ? 0xd4af37 : 0x8b4513);
-    return;
-  }
-
-  if (target.userData.type === "door") {
-    // toggle in base al target corrente, non allo stato istantaneo
-    const currentlyClosedTarget = Math.abs(doorTargetAngle) < 0.01;
-    doorTargetAngle = currentlyClosedTarget ? CONFIG.door.openAngle : 0;
   }
 }
 
@@ -411,12 +459,19 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
 
   if (controls.isLocked) {
-    updatePlayerMovement(delta);
-    updateDoor(delta);
+    updatePlayer(delta);
+
+    // update di tutti gli interactable (porta animata qui)
+    for (const it of interactables) {
+      it.update(delta);
+    }
+
     updateInteractionTarget();
 
     if (keys.e && !eConsumed) {
-      interactWith(currentTarget);
+      if (currentInteractable) {
+        currentInteractable.interact();
+      }
       eConsumed = true;
     }
     if (!keys.e) eConsumed = false;
@@ -429,7 +484,7 @@ function animate() {
 }
 animate();
 
-// Resize
+// resize
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
