@@ -26,6 +26,12 @@ dirLight.position.set(5, 10, 2);
 scene.add(dirLight);
 
 // --------------------------------------------------
+// UI
+// --------------------------------------------------
+const overlay = document.getElementById("overlay");
+const hint = document.getElementById("hint");
+
+// --------------------------------------------------
 // CONTROLLI FPS
 // --------------------------------------------------
 const controls = new PointerLockControls(camera, document.body);
@@ -36,12 +42,23 @@ scene.add(controlsObject);
 const playerHeight = 1.7;
 controlsObject.position.set(0, playerHeight, 5);
 
-const overlay = document.getElementById("overlay");
-const hint = document.getElementById("hint");
+// Click overlay -> lock
+overlay.addEventListener("click", async () => {
+  try {
+    controls.lock();
+  } catch (err) {
+    console.error("Pointer lock error:", err);
+    alert("Non riesco ad attivare il mouse lock. Controlla la Console.");
+  }
+});
 
-overlay.addEventListener("click", () => controls.lock());
-controls.addEventListener("lock", () => overlay.classList.add("hidden"));
-controls.addEventListener("unlock", () => overlay.classList.remove("hidden"));
+controls.addEventListener("lock", () => {
+  overlay.classList.add("hidden");
+});
+
+controls.addEventListener("unlock", () => {
+  overlay.classList.remove("hidden");
+});
 
 // --------------------------------------------------
 // INPUT
@@ -68,11 +85,6 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "KeyE") keys.e = true;
 });
 
-
-  // pressione singola E (non tenuta continua)
-  if (e.code === "KeyE") keys.e = true;
-});
-
 window.addEventListener("keyup", (e) => {
   if (e.code === "KeyW") keys.w = false;
   if (e.code === "KeyA") keys.a = false;
@@ -80,6 +92,7 @@ window.addEventListener("keyup", (e) => {
   if (e.code === "KeyD") keys.d = false;
   if (e.code === "ShiftLeft" || e.code === "ShiftRight") keys.shift = false;
   if (e.code === "Space") keys.space = false;
+  if (e.code === "KeyE") keys.e = false;
 });
 
 // --------------------------------------------------
@@ -117,7 +130,7 @@ for (let i = 0; i < 16; i++) {
 // --------------------------------------------------
 const interactables = [];
 
-// Cassa interagibile
+// Cassa
 const chest = new THREE.Mesh(
   new THREE.BoxGeometry(1.2, 0.8, 0.8),
   new THREE.MeshStandardMaterial({ color: 0x8b4513 })
@@ -130,11 +143,9 @@ chest.userData = {
 };
 scene.add(chest);
 interactables.push(chest);
-
-// La cassa blocca anche il movimento
 addStaticColliderFromMesh(chest);
 
-// Porta interagibile (solo visuale per ora, non collider dinamico)
+// Porta
 const doorPivot = new THREE.Object3D();
 doorPivot.position.set(-2, 0, -4);
 scene.add(doorPivot);
@@ -143,20 +154,9 @@ const door = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.15),
   new THREE.MeshStandardMaterial({ color: 0x6b7280 })
 );
-// allineo la porta al pivot come cardine laterale
 door.position.set(0.5, 1, 0);
 doorPivot.add(door);
 
-// collisione statica “chiusa”: semplice barriera fissa
-const doorColliderMesh = new THREE.Mesh(
-  new THREE.BoxGeometry(1, 2, 0.25),
-  new THREE.MeshBasicMaterial({ visible: false })
-);
-doorColliderMesh.position.set(-1.5, 1, -4);
-scene.add(doorColliderMesh);
-addStaticColliderFromMesh(doorColliderMesh);
-
-// per raycast, l'oggetto interagibile è la mesh porta
 door.userData = {
   type: "door",
   label: "Premi E per aprire/chiudere porta",
@@ -164,6 +164,15 @@ door.userData = {
   pivot: doorPivot
 };
 interactables.push(door);
+
+// Collider porta (semplice statico)
+const doorColliderMesh = new THREE.Mesh(
+  new THREE.BoxGeometry(1, 2, 0.25),
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
+);
+doorColliderMesh.position.set(-1.5, 1, -4);
+scene.add(doorColliderMesh);
+addStaticColliderFromMesh(doorColliderMesh);
 
 // --------------------------------------------------
 // FISICA PLAYER
@@ -189,27 +198,21 @@ function resolveHorizontalCollisions(position) {
   for (const box of worldColliders) {
     const playerMinY = position.y - playerHeight;
     const playerMaxY = position.y;
-
     if (playerMaxY <= box.min.y || playerMinY >= box.max.y) continue;
 
-    const px = position.x;
-    const pz = position.z;
+    const closestX = clamp(position.x, box.min.x, box.max.x);
+    const closestZ = clamp(position.z, box.min.z, box.max.z);
 
-    const closestX = clamp(px, box.min.x, box.max.x);
-    const closestZ = clamp(pz, box.min.z, box.max.z);
-
-    const dx = px - closestX;
-    const dz = pz - closestZ;
+    const dx = position.x - closestX;
+    const dz = position.z - closestZ;
     const distSq = dx * dx + dz * dz;
     const rSq = playerRadius * playerRadius;
 
     if (distSq < rSq) {
       const dist = Math.sqrt(distSq) || 0.0001;
       const overlap = playerRadius - dist;
-      const nx = dx / dist;
-      const nz = dz / dist;
-      position.x += nx * overlap;
-      position.z += nz * overlap;
+      position.x += (dx / dist) * overlap;
+      position.z += (dz / dist) * overlap;
     }
   }
 }
@@ -224,15 +227,10 @@ function resolveVerticalCollisions(prevY, position) {
     const closestZ = clamp(position.z, box.min.z, box.max.z);
     const dx = position.x - closestX;
     const dz = position.z - closestZ;
-    const distSq = dx * dx + dz * dz;
-    if (distSq > playerRadius * playerRadius) continue;
+    if (dx * dx + dz * dz > playerRadius * playerRadius) continue;
 
     // atterraggio
-    if (
-      velocity.y <= 0 &&
-      footY <= box.max.y &&
-      (prevY - playerHeight) >= box.max.y - 0.001
-    ) {
+    if (velocity.y <= 0 && footY <= box.max.y && (prevY - playerHeight) >= box.max.y - 0.001) {
       footY = box.max.y;
       position.y = footY + playerHeight;
       velocity.y = 0;
@@ -241,11 +239,7 @@ function resolveVerticalCollisions(prevY, position) {
     }
 
     // soffitto
-    if (
-      velocity.y > 0 &&
-      headY >= box.min.y &&
-      prevY <= box.min.y + 0.001
-    ) {
+    if (velocity.y > 0 && headY >= box.min.y && prevY <= box.min.y + 0.001) {
       position.y = box.min.y;
       velocity.y = 0;
       footY = position.y - playerHeight;
@@ -280,9 +274,8 @@ function updateMovement(delta) {
 
   const prevY = controlsObject.position.y;
 
-  // W avanti corretto
   controls.moveRight(velocity.x * delta);
-  controls.moveForward(-velocity.z * delta);
+  controls.moveForward(-velocity.z * delta); // W avanti
 
   resolveHorizontalCollisions(controlsObject.position);
 
@@ -301,20 +294,15 @@ function updateMovement(delta) {
 const raycaster = new THREE.Raycaster();
 const maxInteractDistance = 3.0;
 let currentTarget = null;
-let eConsumed = false; // evita trigger multipli quando tieni premuto E
+let eConsumed = false;
 
 function updateInteractTarget() {
-  // centro schermo
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
   const hits = raycaster.intersectObjects(interactables, false);
 
   currentTarget = null;
-  if (hits.length > 0) {
-    const hit = hits[0];
-    if (hit.distance <= maxInteractDistance) {
-      currentTarget = hit.object;
-    }
+  if (hits.length > 0 && hits[0].distance <= maxInteractDistance) {
+    currentTarget = hits[0].object;
   }
 
   if (currentTarget && controls.isLocked) {
@@ -327,21 +315,18 @@ function updateInteractTarget() {
 }
 
 function interactWithTarget(target) {
-  if (!target) return;
+  if (!target || !target.userData) return;
 
   const data = target.userData;
-  if (!data) return;
 
   if (data.type === "chest") {
     data.opened = !data.opened;
-    target.material.color.set(data.opened ? 0xd4af37 : 0x8b4513); // oro/marrone
-    return;
+    target.material.color.set(data.opened ? 0xd4af37 : 0x8b4513);
   }
 
   if (data.type === "door") {
     data.opened = !data.opened;
-    const openAngle = -Math.PI / 2; // 90°
-    data.pivot.rotation.y = data.opened ? openAngle : 0;
+    data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
   }
 }
 
@@ -357,14 +342,11 @@ function animate() {
     updateMovement(delta);
     updateInteractTarget();
 
-    // gestione "pressione singola" di E
     if (keys.e && !eConsumed) {
       interactWithTarget(currentTarget);
       eConsumed = true;
     }
-    if (!keys.e) {
-      eConsumed = false;
-    }
+    if (!keys.e) eConsumed = false;
   } else {
     hint.style.display = "none";
   }
@@ -374,9 +356,6 @@ function animate() {
 }
 animate();
 
-// --------------------------------------------------
-// RESIZE
-// --------------------------------------------------
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
