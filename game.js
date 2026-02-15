@@ -126,7 +126,8 @@ function updateMovement(delta) {
   // Queste funzioni muovono in base all'orientamento della camera:
   // forward = dove stai guardando, right = laterale relativo allo sguardo
   controls.moveRight(velocity.x * delta);
-  controls.moveForward(velocity.z * delta);
+  controls.moveForward(-velocity.z * delta);
+
 
   // Mantieni altezza fissa (niente salto/gravità per ora)
   controls.getObject().position.y = 1.7;
