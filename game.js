@@ -165,14 +165,32 @@ door.userData = {
 };
 interactables.push(door);
 
-// Collider porta (semplice statico)
+// Collider porta dinamico
 const doorColliderMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.25),
   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
 );
 doorColliderMesh.position.set(-1.5, 1, -4);
 scene.add(doorColliderMesh);
-addStaticColliderFromMesh(doorColliderMesh);
+
+// riferimento al Box3 della porta dentro worldColliders
+let doorColliderBox = new THREE.Box3().setFromObject(doorColliderMesh);
+worldColliders.push(doorColliderBox);
+
+function refreshDoorCollider() {
+  // Quando la porta è aperta, disattivo collisione mettendo box "vuoto"
+  if (door.userData.opened) {
+    doorColliderBox.min.set(Infinity, Infinity, Infinity);
+    doorColliderBox.max.set(-Infinity, -Infinity, -Infinity);
+  } else {
+    // Quando è chiusa, collider attivo nella posizione originale
+    doorColliderMesh.position.set(-1.5, 1, -4);
+    doorColliderMesh.rotation.set(0, 0, 0);
+    doorColliderMesh.updateMatrixWorld(true);
+    doorColliderBox.setFromObject(doorColliderMesh);
+  }
+}
+
 
 // --------------------------------------------------
 // FISICA PLAYER
@@ -324,9 +342,12 @@ function interactWithTarget(target) {
     target.material.color.set(data.opened ? 0xd4af37 : 0x8b4513);
   }
 
-  if (data.type === "door") {
-    data.opened = !data.opened;
-    data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
+ if (data.type === "door") {
+  data.opened = !data.opened;
+  data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
+  refreshDoorCollider();
+}
+refreshDoorCollider();
   }
 }
 
