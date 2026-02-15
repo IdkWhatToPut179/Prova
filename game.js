@@ -175,16 +175,14 @@ const doorColliderBox = new THREE.Box3();
 worldColliders.push(doorColliderBox);
 
 function refreshDoorCollider() {
-  if (door.userData.opened) {
-    // collider disattivo
-    doorColliderBox.makeEmpty();
-  } else {
-    // collider attivo (porta chiusa)
-    doorColliderMesh.position.set(-1.5, 1, -4);
-    doorColliderMesh.rotation.set(0, 0, 0);
-    doorColliderMesh.updateMatrixWorld(true);
-    doorColliderBox.setFromObject(doorColliderMesh);
-  }
+  // Il collider segue SEMPRE la porta
+  // (così l'anta collide anche da aperta)
+  doorColliderMesh.position.copy(door.getWorldPosition(new THREE.Vector3()));
+  doorColliderMesh.quaternion.copy(door.getWorldQuaternion(new THREE.Quaternion()));
+  doorColliderMesh.updateMatrixWorld(true);
+  doorColliderBox.setFromObject(doorColliderMesh);
+}
+
 }
 refreshDoorCollider();
 
@@ -359,15 +357,15 @@ function interactWithTarget(target) {
     target.material.color.set(data.opened ? 0xd4af37 : 0x8b4513);
   }
 
-  if (data.type === "door") {
-  data.opened = !data.opened;
-  doorTargetAngle = data.opened ? doorOpenAngle : 0;
+ if (data.type === "door") {
+  const willOpen = Math.abs(doorTargetAngle) < 0.01; // se target è chiuso, ora apri
+  doorTargetAngle = willOpen ? doorOpenAngle : 0;
 
-  // label dinamica
-  data.label = data.opened
+  data.label = willOpen
     ? "Premi E per chiudere porta"
     : "Premi E per aprire porta";
 }
+
 
 }
 
@@ -382,24 +380,17 @@ function updateDoorAnimation(delta) {
   doorCurrentAngle += (doorTargetAngle - doorCurrentAngle) * t;
   doorPivot.rotation.y = doorCurrentAngle;
 
-  // Collider porta:
-  // - attivo solo quando quasi chiusa
-  // - disattivo quando in apertura/aperta
-  const almostClosed = Math.abs(doorCurrentAngle) < 0.08;
+  // Aggiorna sempre il collider alla posa corrente della porta
+  refreshDoorCollider();
 
-  if (almostClosed) {
-    if (doorColliderBox.isEmpty()) {
-      door.userData.opened = false;
-      refreshDoorCollider();
-      door.userData.label = "Premi E per aprire porta";
-    }
-  } else {
-    if (!doorColliderBox.isEmpty()) {
-      doorColliderBox.makeEmpty();
-    }
-    door.userData.opened = true;
-    door.userData.label = "Premi E per chiudere porta";
-  }
+  // Aggiorna stato/label in base all'angolo
+  const openedNow = Math.abs(doorCurrentAngle - doorOpenAngle) < 0.12;
+  door.userData.opened = openedNow;
+  door.userData.label = openedNow
+    ? "Premi E per chiudere porta"
+    : "Premi E per aprire porta";
+}
+
 }
 
 function animate() {
