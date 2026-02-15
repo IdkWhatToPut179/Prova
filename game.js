@@ -38,18 +38,14 @@ const controls = new PointerLockControls(camera, document.body);
 const controlsObject = controls.getObject();
 scene.add(controlsObject);
 
-// posizione iniziale
+// Player
 const playerHeight = 1.7;
+const playerRadius = 0.35;
 controlsObject.position.set(0, playerHeight, 5);
 
-// Click overlay -> lock
-overlay.addEventListener("click", async () => {
-  try {
-    controls.lock();
-  } catch (err) {
-    console.error("Pointer lock error:", err);
-    alert("Non riesco ad attivare il mouse lock. Controlla la Console.");
-  }
+// Pointer lock
+overlay.addEventListener("click", () => {
+  controls.lock();
 });
 
 controls.addEventListener("lock", () => {
@@ -98,35 +94,36 @@ window.addEventListener("keyup", (e) => {
 // --------------------------------------------------
 // MONDO + COLLISIONI
 // --------------------------------------------------
-const worldColliders = []; // Box3 statici per collisione player
+const worldColliders = []; // array di THREE.Box3
 
 function addStaticColliderFromMesh(mesh) {
   mesh.updateMatrixWorld(true);
-  worldColliders.push(new THREE.Box3().setFromObject(mesh));
+  const box = new THREE.Box3().setFromObject(mesh);
+  worldColliders.push(box);
+  return box;
 }
 
-// Terreno
 const ground = new THREE.Mesh(
   new THREE.BoxGeometry(40, 1, 40),
   new THREE.MeshStandardMaterial({ color: 0x2d7a2d })
 );
-ground.position.y = -0.5; // top a y=0
+ground.position.y = -0.5;
 scene.add(ground);
 addStaticColliderFromMesh(ground);
 
-// Ostacoli casuali
+// cubi random
 for (let i = 0; i < 16; i++) {
-  const b = new THREE.Mesh(
+  const box = new THREE.Mesh(
     new THREE.BoxGeometry(1, 1, 1),
     new THREE.MeshStandardMaterial({ color: 0x8888ff })
   );
-  b.position.set((Math.random() - 0.5) * 30, 0.5, (Math.random() - 0.5) * 30);
-  scene.add(b);
-  addStaticColliderFromMesh(b);
+  box.position.set((Math.random() - 0.5) * 30, 0.5, (Math.random() - 0.5) * 30);
+  scene.add(box);
+  addStaticColliderFromMesh(box);
 }
 
 // --------------------------------------------------
-// OGGETTI INTERAGIBILI (raycast con mirino)
+// INTERAGIBILI
 // --------------------------------------------------
 const interactables = [];
 
@@ -145,7 +142,7 @@ scene.add(chest);
 interactables.push(chest);
 addStaticColliderFromMesh(chest);
 
-// Porta
+// Porta (pivot)
 const doorPivot = new THREE.Object3D();
 doorPivot.position.set(-2, 0, -4);
 scene.add(doorPivot);
@@ -165,7 +162,7 @@ door.userData = {
 };
 interactables.push(door);
 
-// Collider porta dinamico
+// Collider dinamico porta
 const doorColliderMesh = new THREE.Mesh(
   new THREE.BoxGeometry(1, 2, 0.25),
   new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 })
@@ -173,30 +170,27 @@ const doorColliderMesh = new THREE.Mesh(
 doorColliderMesh.position.set(-1.5, 1, -4);
 scene.add(doorColliderMesh);
 
-// riferimento al Box3 della porta dentro worldColliders
-let doorColliderBox = new THREE.Box3().setFromObject(doorColliderMesh);
+const doorColliderBox = new THREE.Box3();
 worldColliders.push(doorColliderBox);
 
 function refreshDoorCollider() {
-  // Quando la porta è aperta, disattivo collisione mettendo box "vuoto"
   if (door.userData.opened) {
-    doorColliderBox.min.set(Infinity, Infinity, Infinity);
-    doorColliderBox.max.set(-Infinity, -Infinity, -Infinity);
+    // collider disattivo
+    doorColliderBox.makeEmpty();
   } else {
-    // Quando è chiusa, collider attivo nella posizione originale
+    // collider attivo (porta chiusa)
     doorColliderMesh.position.set(-1.5, 1, -4);
     doorColliderMesh.rotation.set(0, 0, 0);
     doorColliderMesh.updateMatrixWorld(true);
     doorColliderBox.setFromObject(doorColliderMesh);
   }
 }
-
+refreshDoorCollider();
 
 // --------------------------------------------------
-// FISICA PLAYER
+// FISICA
 // --------------------------------------------------
-const playerRadius = 0.35;
-const velocity = new THREE.Vector3(0, 0, 0);
+const velocity = new THREE.Vector3();
 const direction = new THREE.Vector3();
 
 const walkSpeed = 5.0;
@@ -206,6 +200,7 @@ const airControlFactor = 0.35;
 
 const gravity = 24.0;
 const jumpSpeed = 8.8;
+
 let isGrounded = false;
 
 function clamp(v, min, max) {
@@ -214,6 +209,8 @@ function clamp(v, min, max) {
 
 function resolveHorizontalCollisions(position) {
   for (const box of worldColliders) {
+    if (box.isEmpty()) continue;
+
     const playerMinY = position.y - playerHeight;
     const playerMaxY = position.y;
     if (playerMaxY <= box.min.y || playerMinY >= box.max.y) continue;
@@ -237,10 +234,13 @@ function resolveHorizontalCollisions(position) {
 
 function resolveVerticalCollisions(prevY, position) {
   isGrounded = false;
+
   let footY = position.y - playerHeight;
   let headY = position.y;
 
   for (const box of worldColliders) {
+    if (box.isEmpty()) continue;
+
     const closestX = clamp(position.x, box.min.x, box.max.x);
     const closestZ = clamp(position.z, box.min.z, box.max.z);
     const dx = position.x - closestX;
@@ -248,7 +248,11 @@ function resolveVerticalCollisions(prevY, position) {
     if (dx * dx + dz * dz > playerRadius * playerRadius) continue;
 
     // atterraggio
-    if (velocity.y <= 0 && footY <= box.max.y && (prevY - playerHeight) >= box.max.y - 0.001) {
+    if (
+      velocity.y <= 0 &&
+      footY <= box.max.y &&
+      (prevY - playerHeight) >= box.max.y - 0.001
+    ) {
       footY = box.max.y;
       position.y = footY + playerHeight;
       velocity.y = 0;
@@ -257,7 +261,11 @@ function resolveVerticalCollisions(prevY, position) {
     }
 
     // soffitto
-    if (velocity.y > 0 && headY >= box.min.y && prevY <= box.min.y + 0.001) {
+    if (
+      velocity.y > 0 &&
+      headY >= box.min.y &&
+      prevY <= box.min.y + 0.001
+    ) {
       position.y = box.min.y;
       velocity.y = 0;
       footY = position.y - playerHeight;
@@ -292,8 +300,9 @@ function updateMovement(delta) {
 
   const prevY = controlsObject.position.y;
 
+  // W avanti
   controls.moveRight(velocity.x * delta);
-  controls.moveForward(-velocity.z * delta); // W avanti
+  controls.moveForward(-velocity.z * delta);
 
   resolveHorizontalCollisions(controlsObject.position);
 
@@ -307,7 +316,7 @@ function updateMovement(delta) {
 }
 
 // --------------------------------------------------
-// INTERAZIONE RAYCAST
+// INTERAZIONE (raycast dal centro)
 // --------------------------------------------------
 const raycaster = new THREE.Raycaster();
 const maxInteractDistance = 3.0;
@@ -342,12 +351,10 @@ function interactWithTarget(target) {
     target.material.color.set(data.opened ? 0xd4af37 : 0x8b4513);
   }
 
- if (data.type === "door") {
-  data.opened = !data.opened;
-  data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
-  refreshDoorCollider();
-}
-refreshDoorCollider();
+  if (data.type === "door") {
+    data.opened = !data.opened;
+    data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
+    refreshDoorCollider();
   }
 }
 
@@ -367,7 +374,9 @@ function animate() {
       interactWithTarget(currentTarget);
       eConsumed = true;
     }
-    if (!keys.e) eConsumed = false;
+    if (!keys.e) {
+      eConsumed = false;
+    }
   } else {
     hint.style.display = "none";
   }
@@ -377,6 +386,7 @@ function animate() {
 }
 animate();
 
+// Resize
 window.addEventListener("resize", () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
