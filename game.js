@@ -376,7 +376,34 @@ function interactWithTarget(target) {
 // --------------------------------------------------
 const clock = new THREE.Clock();
 
+function updateDoorAnimation(delta) {
+  // movimento fluido verso l'angolo target
+  const t = 1 - Math.exp(-doorAnimSpeed * delta);
+  doorCurrentAngle += (doorTargetAngle - doorCurrentAngle) * t;
+  doorPivot.rotation.y = doorCurrentAngle;
+
+  // Collider porta:
+  // - attivo solo quando quasi chiusa
+  // - disattivo quando in apertura/aperta
+  const almostClosed = Math.abs(doorCurrentAngle) < 0.08;
+
+  if (almostClosed) {
+    if (doorColliderBox.isEmpty()) {
+      door.userData.opened = false;
+      refreshDoorCollider();
+      door.userData.label = "Premi E per aprire porta";
+    }
+  } else {
+    if (!doorColliderBox.isEmpty()) {
+      doorColliderBox.makeEmpty();
+    }
+    door.userData.opened = true;
+    door.userData.label = "Premi E per chiudere porta";
+  }
+}
+
 function animate() {
+
   const delta = Math.min(clock.getDelta(), 0.05);
 
   if (controls.isLocked) {
