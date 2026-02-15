@@ -11,7 +11,6 @@ canvas {
   display: block;
 }
 
-/* Overlay iniziale */
 #overlay {
   position: fixed;
   inset: 0;
@@ -20,7 +19,7 @@ canvas {
   text-align: center;
   color: white;
   background: rgba(0, 0, 0, 0.65);
-  z-index: 10;
+  z-index: 20;
   user-select: none;
   cursor: pointer;
   padding: 24px;
@@ -31,7 +30,6 @@ canvas {
   display: none;
 }
 
-/* Mirino */
 #crosshair {
   position: fixed;
   left: 50%;
@@ -42,15 +40,14 @@ canvas {
   margin-top: -3px;
   border-radius: 50%;
   background: white;
-  z-index: 20;
+  z-index: 30;
   pointer-events: none;
 }
 
-/* Hint interazione */
 #hint {
   position: fixed;
   left: 50%;
-  bottom: 10%;
+  bottom: 16%;
   transform: translateX(-50%);
   color: white;
   background: rgba(0, 0, 0, 0.55);
@@ -58,7 +55,56 @@ canvas {
   border-radius: 8px;
   padding: 8px 12px;
   font-size: 14px;
-  z-index: 30;
+  z-index: 40;
   pointer-events: none;
   display: none;
+}
+
+/* Inventario */
+#inventory {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.inv-slot {
+  width: 92px;
+  height: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  color: white;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.inv-slot.active {
+  border-color: #ffd54a;
+  box-shadow: 0 0 0 1px #ffd54a inset;
+}
+
+.inv-key {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.inv-name {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inv-count {
+  font-size: 12px;
+  opacity: 0.95;
 }
