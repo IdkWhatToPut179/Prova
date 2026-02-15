@@ -19,16 +19,13 @@ canvas {
   text-align: center;
   color: white;
   background: rgba(0, 0, 0, 0.65);
-  z-index: 20;
+  z-index: 30;
   user-select: none;
   cursor: pointer;
   padding: 24px;
   gap: 4px;
 }
-
-#overlay.hidden {
-  display: none;
-}
+#overlay.hidden { display: none; }
 
 #crosshair {
   position: fixed;
@@ -40,7 +37,7 @@ canvas {
   margin-top: -3px;
   border-radius: 50%;
   background: white;
-  z-index: 30;
+  z-index: 20;
   pointer-events: none;
 }
 
@@ -60,13 +57,12 @@ canvas {
   display: none;
 }
 
-/* Inventario */
 #inventory {
   position: fixed;
   left: 50%;
   bottom: 28px;
   transform: translateX(-50%);
-  z-index: 40;
+  z-index: 25;
   display: flex;
   gap: 8px;
   pointer-events: none;
@@ -85,26 +81,69 @@ canvas {
   justify-content: space-between;
   box-sizing: border-box;
 }
-
 .inv-slot.active {
   border-color: #ffd54a;
   box-shadow: 0 0 0 1px #ffd54a inset;
 }
-
-.inv-key {
-  font-size: 11px;
-  opacity: 0.8;
-}
-
+.inv-key { font-size: 11px; opacity: 0.8; }
 .inv-name {
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
 }
+.inv-count { font-size: 12px; opacity: 0.95; }
 
-.inv-count {
+.inv-panel {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid; place-items: center;
+}
+.inv-panel.hidden { display: none; }
+
+.inv-window {
+  width: min(860px, 92vw);
+  max-height: 88vh;
+  overflow: auto;
+  background: #1b1f2a;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  padding: 18px;
+  color: #f5f7ff;
+  box-shadow: 0 10px 40px rgba(0,0,0,.45);
+}
+.inv-title { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+.inv-section h3 { margin: 12px 0 8px; font-size: 15px; font-weight: 600; }
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 8px;
+}
+.inv-cell {
+  min-height: 66px;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  padding: 6px;
+  box-sizing: border-box;
+  cursor: pointer;
+  user-select: none;
+}
+.inv-cell:hover { background: rgba(255,255,255,0.08); }
+.inv-cell.selected {
+  border-color: #ffd54a;
+  box-shadow: 0 0 0 1px #ffd54a inset;
+}
+.inv-cell .name {
+  font-size: 12px; font-weight: 600; margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.inv-cell .meta { font-size: 12px; opacity: 0.85; }
+
+.inv-footer {
+  margin-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
   font-size: 12px;
-  opacity: 0.95;
+  opacity: 0.9;
 }
