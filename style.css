@@ -27,3 +27,18 @@ canvas {
 #overlay.hidden {
   display: none;
 }
+
+/* Mirino centrale (puntino bianco) */
+#crosshair {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: white;
+  z-index: 20;
+  pointer-events: none;
+}
