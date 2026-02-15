@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FPS Base - Inventario</title>
+  <title>FPS Modular Base</title>
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -11,14 +11,37 @@
     <h1>FPS base</h1>
     <p>•</p>
     <p>Clicca per iniziare</p>
-    <p>W A S D = muovi • Shift = sprint • Spazio = salto • E = interagisci/raccogli • 1..5 = seleziona slot • ESC = sblocca mouse</p>
+    <p>
+      W A S D = muovi • Shift = sprint • Spazio = salto • E = interagisci/raccogli •
+      Q = drop • 1..5 slot • Tab inventario • ESC sblocca mouse
+    </p>
   </div>
 
   <div id="crosshair"></div>
   <div id="hint"></div>
 
-  <!-- Inventario HUD -->
   <div id="inventory"></div>
+
+  <div id="inventoryPanel" class="inv-panel hidden">
+    <div class="inv-window">
+      <div class="inv-title">Inventario</div>
+
+      <div class="inv-section">
+        <h3>Barra rapida (5)</h3>
+        <div id="hotbarGrid" class="inv-grid"></div>
+      </div>
+
+      <div class="inv-section">
+        <h3>Zaino (20)</h3>
+        <div id="bagGrid" class="inv-grid"></div>
+      </div>
+
+      <div class="inv-footer">
+        <span>Click: prendi/sposta stack</span>
+        <span>TAB: chiudi</span>
+      </div>
+    </div>
+  </div>
 
   <script type="importmap">
   {
@@ -29,6 +52,6 @@
   }
   </script>
 
-  <script type="module" src="./game.js"></script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>
