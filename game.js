@@ -156,9 +156,10 @@ doorPivot.add(door);
 
 door.userData = {
   type: "door",
-  label: "Premi E per aprire/chiudere porta",
+  label: "Premi E per aprire porta",
   opened: false,
   pivot: doorPivot
+
 };
 interactables.push(door);
 
@@ -186,6 +187,13 @@ function refreshDoorCollider() {
   }
 }
 refreshDoorCollider();
+
+// Animazione porta
+let doorCurrentAngle = 0;
+let doorTargetAngle = 0;
+const doorOpenAngle = -Math.PI / 2;
+const doorAnimSpeed = 4.5; // più alto = più veloce
+
 
 // --------------------------------------------------
 // FISICA
@@ -352,10 +360,15 @@ function interactWithTarget(target) {
   }
 
   if (data.type === "door") {
-    data.opened = !data.opened;
-    data.pivot.rotation.y = data.opened ? -Math.PI / 2 : 0;
-    refreshDoorCollider();
-  }
+  data.opened = !data.opened;
+  doorTargetAngle = data.opened ? doorOpenAngle : 0;
+
+  // label dinamica
+  data.label = data.opened
+    ? "Premi E per chiudere porta"
+    : "Premi E per aprire porta";
+}
+
 }
 
 // --------------------------------------------------
